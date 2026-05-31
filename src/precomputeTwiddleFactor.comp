@@ -1,0 +1,25 @@
+#version 460 core
+layout(local_size_x = 1, local_size_y = 8) in;
+uniform layout(rgba32f, binding = 0) writeonly image2D img_output;
+const float PI = 3.14159265359;
+uniform int resolution;
+uniform int log2Resolution;
+
+vec2 ComplexMult(vec2 a, vec2 b)
+{
+	return vec2(a.r * b.r - a.g * b.g, a.r * b.g + a.g * b.r);
+}
+vec2 ComplexExp(vec2 angle){
+	return vec2(cos(angle.y), sin(angle.y)) * exp(angle.x);
+}
+void main(){
+	ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+	if(id.x>= log2Resolution || id.y >= resolution/2)
+		return;
+	uint b = resolution >> (id.x + 1);
+	uint i = (2 * b * (id.y / b) + id.y % b) % resolution;
+	vec2 mult = 2 * PI * vec2(0, 1) / resolution;
+	vec2 twiddle = ComplexExp(-mult * ((id.y / b) * b));
+	imageStore(img_output, id, vec4(twiddle, i, i + b));
+	imageStore(img_output, ivec2(id.x, id.y + resolution/2), vec4(-twiddle, i, i + b));
+}

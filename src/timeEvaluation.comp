@@ -1,0 +1,67 @@
+#version 460 core
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(rg32f, binding = 0) uniform readonly image2D heightmapInput;
+layout(rg32f, binding = 1) uniform writeonly image2D heightmapOutput;
+layout(rg32f, binding = 2) uniform writeonly image2D dxOutput;
+layout(rg32f, binding = 3) uniform writeonly image2D dyOutput;
+layout(rg32f, binding = 4) uniform writeonly image2D displacementxOutput;
+layout(rg32f, binding = 5) uniform writeonly image2D displacementyOutput;
+uniform float time;
+uniform float speed;
+uniform int resolution;
+uniform int oceanSize;  
+
+const float PI = 3.14159265359;
+const float g = 9.81;
+
+vec2 complexMultiply(vec2 a, vec2 b) {
+    return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+vec2 ComplexAdd(vec2 c1, vec2 c2) {
+    return c1 + c2;
+}
+vec2 ComplexConj(vec2 c) {
+    return vec2(c.x, -c.y);
+}
+vec2 multiplyByI(vec2 inputNum){
+	return vec2(-inputNum.g, inputNum.r);
+}
+void main() {
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+    if (id.x >= resolution || id.y >= resolution) return;
+
+    float kx = (float(id.x) - float(resolution) / 2.0) * (2.0 * PI / float(oceanSize));
+    float ky = (float(id.y) - float(resolution) / 2.0) * (2.0 * PI / float(oceanSize));
+    float k_len = sqrt(kx * kx + ky * ky);
+
+    if (k_len < 0.0001) {
+        imageStore(heightmapOutput, id, vec4(0.0));
+        return;
+    }
+
+    float dispersion = sqrt(g * k_len);
+    vec2 phaseShift = vec2(cos(dispersion * time*speed), sin(dispersion * time*speed));
+    vec2 conjPhaseShift = vec2(cos(-dispersion * time*speed), sin(-dispersion * time*speed));
+
+    vec2 H0 = imageLoad(heightmapInput, id).rg;
+
+    ivec2 mirroredCoords = ivec2((resolution - id.x) % resolution, (resolution - id.y) % resolution);
+    vec2 H0_mk = imageLoad(heightmapInput, mirroredCoords).rg;
+    vec2 H0_conj = ComplexConj(H0_mk);
+
+    vec2 Ht = ComplexAdd(complexMultiply(H0, phaseShift), complexMultiply(H0_conj, conjPhaseShift));
+    vec2 dx = multiplyByI(Ht) * kx;
+    vec2 dy = multiplyByI(Ht) * ky;
+
+    float kx_norm = kx / k_len;
+    float ky_norm = ky / k_len;
+    
+    vec2 dispX = multiplyByI(Ht) * kx_norm;
+    vec2 dispY = multiplyByI(Ht) * ky_norm;
+    imageStore(heightmapOutput, id, vec4(Ht, 0.0, 1.0));
+    imageStore(dxOutput, id, vec4(dx, 0.0, 1.0));
+    imageStore(dyOutput, id, vec4(dy, 0.0, 1.0));
+    imageStore(displacementxOutput, id, vec4(dispX, 0.0, 1.0));
+    imageStore(displacementyOutput, id, vec4(dispY, 0.0, 1.0));
+}

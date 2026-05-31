@@ -1,0 +1,61 @@
+#version 460 core
+layout (local_size_x = 16, local_size_y = 16) in;
+layout (binding = 0, rg32f) uniform image2D heightmapOutput;
+uniform sampler2D gaussianNoise;
+uniform int resolution;              // resolution (e.g., 256)
+uniform float oceanSize;            // Physical domain size (e.g., 1000.0 meters)   
+uniform float windSpeed;    // Wind speed at 10m (m/s)
+uniform float fetch;        // Fetch distance (meters)
+uniform vec2 windDir;       // Normalized wind direction vector
+
+const float PI = 3.14159265359;
+const float G = 9.81;
+
+void main() {
+	int x = int(gl_GlobalInvocationID.x);
+	int y = int(gl_GlobalInvocationID.y);
+	if(x>= resolution || y >= resolution)
+		return;
+	float alpha = 0.076*pow(windSpeed/(fetch*G), 0.22);
+	float peakFrequency = 22*pow(G*G/(windSpeed*fetch), 0.33);
+	float kx = 2*PI*(x-resolution/2.0)/oceanSize;
+	float ky = 2*PI*(y-resolution/2.0)/oceanSize;
+	float kLength = length(vec2(kx, ky));
+	if(kLength < 1e-6)
+	{
+		imageStore(heightmapOutput, ivec2(x, y), vec4(0.0));
+		return;
+	}
+float frequency = sqrt(G * kLength);
+	float sigma = frequency > peakFrequency ? 0.09 : 0.07;
+	float gamma = 3.3;
+	float r = exp(
+		-pow(frequency - peakFrequency, 2.0) /
+		(2.0 * sigma * sigma *
+		 peakFrequency * peakFrequency)
+	);
+	float peakEnhancement = pow(gamma, r);
+	float spectralEnergy = alpha*G*G/pow(frequency,5.0)*exp(-1.25*pow(peakFrequency/frequency, 4.0))*peakEnhancement;
+	
+	float alignment = dot(normalize(vec2(kx, ky)), windDir);
+	alignment = max(alignment, 0.0); // Only consider waves moving in the wind direction
+	float spreadingFunction = (2.0/PI)*pow(alignment, 2.0);
+	float realRandomVal = texture(gaussianNoise, vec2(float(x)/resolution, float(y)/resolution)).r*8.0-4.0;
+	float imagRandomVal = texture(gaussianNoise, vec2(float(x)/resolution, float(y)/resolution)).g*8.0-4.0;
+	float deltaK = 2.0 * PI / oceanSize;
+	float spectrum =spectralEnergy *spreadingFunction;
+	float shortWaveDamping = exp(-kLength * kLength * 0.001);
+	spectrum *= shortWaveDamping;
+	float domega_dk = 0.5 * sqrt(G / kLength);
+
+float amplitude =
+    sqrt(
+        2.0 * spectrum *
+        abs(domega_dk) /
+        kLength *
+        deltaK * deltaK
+    );
+
+	vec2 complexAmplitude =amplitude * vec2(realRandomVal, imagRandomVal);
+	imageStore(heightmapOutput, ivec2(x, y), vec4(complexAmplitude, 0.0, 1.0));
+}
