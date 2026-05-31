@@ -18,7 +18,7 @@ constexpr int kSpectrumLog2Resolution = 8;
 constexpr float kOceanSize = 64.0f;
 constexpr float kWindSpeed = 20.0f;
 constexpr float kFetch = 20000.0f;
-const vec2 kOceanMeshSize = vec2(100.0f, 100.0f);
+const vec2 kOceanMeshSize = vec2(1000.0f, 1000.0f);
 vec2 screenSize(800.0f, 600.0f);
 float aspectRatio = screenSize.x / screenSize.y;
 Camera* camera;
@@ -288,44 +288,50 @@ GLFWwindow* initWindow()
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 	return window;
 }
-void createOceanMesh(ivec2 size, vec2 resolution) {
-	int vertsX = static_cast<int>(size.x * resolution.x);
-	int vertsZ = static_cast<int>(size.y * resolution.y);
-	float dx = size.x / float(vertsX - 1);
-	float dz = size.y / float(vertsZ - 1);
-	std::vector<float> vertices;
-	oceanIndices.clear();
+void createOceanMesh(ivec2 size, int stepSize) {
+	stepSize = std::max(stepSize, 1);
 
-	for (int z = 0; z < vertsZ; ++z) {
-		for (int x = 0; x < vertsX; ++x) {
-			float xpos = x * dx - size.x * 0.5f;
-			float zpos = z * dz - size.y * 0.5f;
+	int cellsX = std::max(size.x / stepSize, 1);
+	int cellsZ = std::max(size.y / stepSize, 1);
+
+	float halfX = size.x * 0.5f;
+	float halfZ = size.y * 0.5f;
+
+	vector<float> vertices;
+	vertices.reserve((cellsX + 1) * (cellsZ + 1) * 3);
+
+	for (int z = 0; z <= cellsZ; ++z) {
+		for (int x = 0; x <= cellsX; ++x) {
+			float xpos = float(x * stepSize) - halfX;
+			float zpos = float(z * stepSize) - halfZ;
 			vertices.push_back(xpos);
 			vertices.push_back(0.0f);
 			vertices.push_back(zpos);
 		}
 	}
 
-	for (int z = 0; z < vertsZ - 1; ++z) {
-		for (int x = 0; x < vertsX - 1; ++x) {
-			int i0 = z * vertsX + x;
+	oceanIndices.clear();
+	oceanIndices.reserve(cellsX * cellsZ * 4);
+
+	for (int z = 0; z < cellsZ; ++z) {
+		for (int x = 0; x < cellsX; ++x) {
+			int i0 = z * (cellsX + 1) + x;
 			int i1 = i0 + 1;
-			int i2 = i0 + vertsX;
+			int i2 = i0 + (cellsX + 1);
 			int i3 = i2 + 1;
-			// First triangle
+
+			// bottom-left, bottom-right, top-right, top-left
 			oceanIndices.push_back(i0);
-			oceanIndices.push_back(i2);
 			oceanIndices.push_back(i1);
-			// Second triangle
-			oceanIndices.push_back(i1);
-			oceanIndices.push_back(i2);
 			oceanIndices.push_back(i3);
+			oceanIndices.push_back(i2);
 		}
 	}
 
 	std::vector<attribute> attribs = {
 		{"position", 0, 3, 3 * sizeof(float), GL_FLOAT}
 	};
+	cout << "Created ocean mesh with " << vertices.size() / 3 << " vertices and " << oceanIndices.size() / 4 << " quads." << endl;
 	oceanVAO = createInterleavedVAO(
 		vertices.data(),
 		vertices.size() * sizeof(float),
@@ -334,9 +340,7 @@ void createOceanMesh(ivec2 size, vec2 resolution) {
 		attribs,
 		shaderProgram
 	);
-	cout << "Created ocean mesh with " << vertices.size() / 3 << " vertices and " << oceanIndices.size() / 3 << " triangles." << endl;
 }
-
 void createPostProcessQuad() {
 	if (postProcessVAO != 0) {
 		glDeleteVertexArrays(1, &postProcessVAO);
@@ -429,8 +433,9 @@ void render() {
 	glUniform3fv(glGetUniformLocation(shaderProgram, "lightDir"), 1, value_ptr(lightDir));
 	glUniform1f(glGetUniformLocation(shaderProgram, "time"), (float)glfwGetTime());
 	glUniform2fv(glGetUniformLocation(shaderProgram, "oceanMeshSize"), 1, value_ptr(kOceanMeshSize));
+	glUniform1f(glGetUniformLocation(shaderProgram, "meshResolution"), 15.0);
 	glUniform1f(glGetUniformLocation(shaderProgram, "displacementScale"), 1.0);
-	glUniform1f(glGetUniformLocation(shaderProgram, "frequency"), 15.0);
+	glUniform1f(glGetUniformLocation(shaderProgram, "frequency"), kOceanMeshSize.x/10.0);
 	glUniform1f(glGetUniformLocation(shaderProgram, "choppiness"), 1.5f);
 	bindTexture(pingpongTexture[fftOutputIndex], "heightmap", 3);
 	bindTexture(pingpongdxTexture[fftOutputIndex], "dxTexture", 4);
@@ -444,17 +449,16 @@ void render() {
 	glBindSampler(6, fftLinearSampler);
 	glBindSampler(7, fftLinearSampler);
 	glBindVertexArray(oceanVAO);
-	glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(oceanIndices.size()), GL_UNSIGNED_INT, 0);
+	glPatchParameteri(GL_PATCH_VERTICES, 4);
+	glDrawElements(GL_PATCHES, static_cast<GLsizei>(oceanIndices.size()), GL_UNSIGNED_INT, 0);
 	glBindVertexArray(0);
 	glBindSampler(3, 0);
 	glBindSampler(4, 0);
 	glBindSampler(5, 0);
-
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glViewport(0, 0, screenSize.x, screenSize.y);
 	glDisable(GL_DEPTH_TEST);
 	glClear(GL_COLOR_BUFFER_BIT);
-
 	glUseProgram(postProcessProgram);
 	mat4 invProj = inverse(proj);
 	mat4 invView = inverse(view);
@@ -568,7 +572,9 @@ int main(void)
 
 	shaderProgram = createShaderProgram(
 		(programDir / "ocean.vert").string(),
-		(programDir / "ocean.frag").string()
+		(programDir / "ocean.frag").string(),
+		(programDir / "ocean.tesc").string(),
+		(programDir / "ocean.tese").string()
 	);
 	equirectangularProgram = createShaderProgram(
 		(programDir / "equirectangular_to_cubemap.vert").string(),
@@ -586,7 +592,7 @@ int main(void)
 	createSpectrumTextures();
 	createTwiddleFactorsTexture(twiddleFactorGenerationProgram);
 	createPingPongTextures();
-	createOceanMesh(ivec2(static_cast<int>(kOceanMeshSize.x), static_cast<int>(kOceanMeshSize.y)), vec2(15.0));
+	createOceanMesh(ivec2(static_cast<int>(kOceanMeshSize.x), static_cast<int>(kOceanMeshSize.y)),10.0);
 	createCubeMesh();
 	createFftSampler();
 	createPostProcessQuad();

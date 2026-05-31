@@ -18,7 +18,7 @@ struct attribute {
 
 // Shader utilities
 std::string readShaderFile(const std::string& filePath);
-unsigned int createShaderProgram(std::string vertexShaderFileName, std::string fragmentShaderFileName);
+unsigned int createShaderProgram(std::string vertexShaderFileName, std::string fragmentShaderFileName, std::string tessellationControlFileName = "", std::string tessellationEvaluationFileName = "");
 
 // VAO utility
 unsigned int createInterleavedVAO(

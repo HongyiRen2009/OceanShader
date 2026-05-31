@@ -23,7 +23,7 @@ string readShaderFile(const string& filePath) {
     fileStream.close();
     return sstream.str();
 }
-unsigned int createShaderProgram(string vertexShaderFileName, string fragmentShaderFileName)
+unsigned int createShaderProgram(string vertexShaderFileName, string fragmentShaderFileName, string tessellationControlFileName, string tessellationEvaluationFileName)
 {
     string vertexShaderSource = readShaderFile(vertexShaderFileName);
     string fragmentShaderSource = readShaderFile(fragmentShaderFileName);
@@ -53,6 +53,35 @@ unsigned int createShaderProgram(string vertexShaderFileName, string fragmentSha
     shaderProgram = glCreateProgram();
     glAttachShader(shaderProgram, vertexShader);
     glAttachShader(shaderProgram, fragmentShader);
+	if (tessellationControlFileName != "") {
+        string tessellationControlShaderSource = readShaderFile(tessellationControlFileName);
+        unsigned int tessellationControlShader = glCreateShader(GL_TESS_CONTROL_SHADER);
+        const char* tessellationControlShaderSourceCStr = tessellationControlShaderSource.c_str();
+        glShaderSource(tessellationControlShader, 1, &tessellationControlShaderSourceCStr, NULL);
+        glCompileShader(tessellationControlShader);
+        glGetShaderiv(tessellationControlShader, GL_COMPILE_STATUS, &success);
+        if (!success)
+        {
+            glGetShaderInfoLog(tessellationControlShader, 512, NULL, infoLog);
+            cout << "ERROR::SHADER::TESSELLATION_CONTROL::COMPILATION_FAILED\n" << infoLog << endl;
+        }
+        glAttachShader(shaderProgram, tessellationControlShader);
+    }
+    if (tessellationEvaluationFileName != "") {
+        string tessellationEvaluationShaderSource = readShaderFile(tessellationEvaluationFileName);
+        unsigned int tessellationEvaluationShader = glCreateShader(GL_TESS_EVALUATION_SHADER);
+        const char* tessellationEvaluationShaderSourceCStr = tessellationEvaluationShaderSource.c_str();
+        glShaderSource(tessellationEvaluationShader, 1, &tessellationEvaluationShaderSourceCStr, NULL);
+        glCompileShader(tessellationEvaluationShader);
+        glGetShaderiv(tessellationEvaluationShader, GL_COMPILE_STATUS, &success);
+        if (!success)
+        {
+            glGetShaderInfoLog(tessellationEvaluationShader, 512, NULL, infoLog);
+            cout << "ERROR::SHADER::TESSELLATION_EVALUATION::COMPILATION_FAILED\n" << infoLog << endl;
+        }
+		glAttachShader(shaderProgram, tessellationEvaluationShader);
+    }
+
     glLinkProgram(shaderProgram);
     glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
     if (!success) {
