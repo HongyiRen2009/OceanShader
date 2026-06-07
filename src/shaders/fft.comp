@@ -1,0 +1,72 @@
+#version 460 core
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(rgba32f, binding = 0) uniform readonly image2DArray img_input;
+layout(rgba32f, binding = 1) uniform writeonly image2DArray img_output;
+layout(rgba32f, binding = 2) uniform readonly image2D img_twiddle;
+uniform int resolution;
+uniform uint stage;
+uniform bool horizontal;
+uniform bool normalization;
+uniform bool applyShift;
+uniform int numSpectrums;
+const float PI = 3.1415926535897932384626433832795;
+vec2 ComplexMult(vec2 a, vec2 b)
+{
+	return vec2(a.r * b.r - a.g * b.g, a.r * b.g + a.g * b.r);
+}
+void horizontalIFFT(ivec2 id,int index){
+	vec4 data = imageLoad(img_twiddle, ivec2(stage,id.x));
+	ivec2 inputIndex = ivec2(data.ba);
+	vec4 firstVal = imageLoad(img_input, ivec3(inputIndex.x, id.y,index));
+	vec4 secondVal = imageLoad(img_input, ivec3(inputIndex.y, id.y,index));
+	vec2 res0 = firstVal.rg + ComplexMult(vec2(data.r, -data.g), secondVal.rg);
+	vec2 res1 = firstVal.ba + ComplexMult(vec2(data.r, -data.g), secondVal.ba);
+	if(normalization){
+		res0/= stage;
+		res1/= stage;
+	}
+	if(applyShift){
+		float shift = (1.0 - 2.0 * ((id.x + id.y) % 2));
+		res0 *= shift;
+		res1 *= shift;
+
+	}
+
+	imageStore(img_output,ivec3(id.xy,index),vec4(res0, res1));
+}
+void verticalIFFT(ivec2 id,int index){
+	vec4 data = imageLoad(img_twiddle, ivec2(stage,id.y));
+	ivec2 inputIndex = ivec2(data.ba);
+	vec4 firstVal = imageLoad(img_input, ivec3(id.x,inputIndex.x,index));
+	vec4 secondVal = imageLoad(img_input, ivec3(id.x,inputIndex.y,index));
+	vec2 res0 = firstVal.rg + ComplexMult(vec2(data.r, -data.g), secondVal.rg);
+	vec2 res1 = firstVal.ba + ComplexMult(vec2(data.r, -data.g), secondVal.ba);
+	if(normalization){
+		res0/= stage;
+		res1/= stage;
+	}
+	if(applyShift){
+		float shift = (1.0 - 2.0 * ((id.x + id.y) % 2));
+		res0 *= shift;
+		res1 *= shift;
+
+	}
+
+	imageStore(img_output,ivec3(id.xy,index),vec4(res0, res1));
+}
+
+void main()
+{
+	ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+	if(horizontal){
+		for(int i=0;i<numSpectrums;i++){
+			horizontalIFFT(id,i);
+		}
+	}
+	else{
+		for(int i=0;i<numSpectrums;i++){
+			verticalIFFT(id,i);
+		}
+	}
+		
+}

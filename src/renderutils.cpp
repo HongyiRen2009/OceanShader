@@ -189,11 +189,6 @@ unsigned int importTexture2D(const char* imagePath, int width, int height, int n
     stbi_image_free(data);
     return texture;
 }
-void bindTexture2D(unsigned int texture, const char* key, unsigned int slot, unsigned int program,GLenum textureSlot = GL_TEXTURE0) {
-    glActiveTexture(textureSlot + slot);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    glUniform1i(glGetUniformLocation(program, key), slot);
-}
 void bindTexture(unsigned int texture, const char* key, unsigned int slot, GLenum textureSlot) {
     GLenum target = textureSlot == GL_TEXTURE0 ? GL_TEXTURE_2D : textureSlot;
     glActiveTexture(GL_TEXTURE0 + slot);
@@ -262,8 +257,23 @@ unsigned int createTexture1D(int width, GLenum internalFormat, GLenum format, GL
     glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     return texture;
 }
-void bindTexture2D(unsigned int texture, const char* key, unsigned int slot) {
-    glActiveTexture(GL_TEXTURE0 + slot);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    glUniform1i(glGetUniformLocation(slot, key), slot);
+void bindTextureArray(unsigned int textureArray, const char* key, unsigned int slot, GLenum textureSlot) {
+	glActiveTexture(textureSlot + slot);
+	glBindTexture(GL_TEXTURE_2D_ARRAY, textureArray);
+	GLint program = 0;
+	glGetIntegerv(GL_CURRENT_PROGRAM, &program);
+	if (program != 0) {
+		glUniform1i(glGetUniformLocation(program, key), slot);
+	}
+}
+unsigned int createTextureArray2D(int width, int height, int layers, GLenum internalFormat, GLenum format, GLenum type, GLint minFilter, GLint magFilter, GLint wrapS, GLint wrapT, const void* data) {
+    unsigned int texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, texture);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, internalFormat, width, height, layers, 0, format, type, data);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, minFilter);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, magFilter);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, wrapS);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, wrapT);
+	return texture;
 }

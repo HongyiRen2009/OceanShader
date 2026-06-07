@@ -11,12 +11,13 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <filesystem>
 #include <numeric>
+#include "spectrumManager.h"
 using namespace std;
 using namespace glm;
 constexpr int kSpectrumResolution = 256;
 constexpr int kSpectrumLog2Resolution = 8;
-constexpr float kOceanSize = 64.0f;
-constexpr float kWindSpeed = 20.0f;
+constexpr float kOceanSize = 128.0f;
+constexpr float kWindSpeed = 30.0f;
 constexpr float kFetch = 20000.0f;
 const vec2 kOceanMeshSize = vec2(1000.0f, 1000.0f);
 vec2 screenSize(800.0f, 600.0f);
@@ -29,20 +30,15 @@ unsigned int cubeVAO;
 unsigned int cubeIndexCount;
 unsigned int environmentCubemap;
 unsigned int equirectangularProgram;
-unsigned int spectrumCreationProgram;
 unsigned int spectrumTexture;
 unsigned int gaussianNoiseTexture;
 unsigned int spectrumProgram;
 unsigned int fftProgram;
+
+unsigned int assemblyProgram;
 unsigned int twiddleFactorsTexture;
 unsigned int twiddleFactorGenerationProgram;
 unsigned int timeEvaluationProgram;
-unsigned int pingpongTexture[2];
-unsigned int pingpongdxTexture[2];
-unsigned int pingpongdyTexture[2];
-unsigned int pingpongdisplacementxTexture[2];
-unsigned int pingpongdisplacementyTexture[2];
-unsigned int fftOutputIndex = 0;
 unsigned int fftLinearSampler = 0;
 unsigned int postProcessProgram = 0;
 unsigned int postProcessFbo = 0;
@@ -50,10 +46,10 @@ unsigned int postProcessColorTexture = 0;
 unsigned int postProcessDepthTexture = 0;
 unsigned int postProcessVAO = 0;
 unsigned int postProcessVBO = 0;
+SpectrumManager spectrumManager(kSpectrumResolution, kWindSpeed, normalize(vec2(1.0f, 1.0f)));
 const double PI = 3.14159265358979323846;
 
 const std::filesystem::path programDir = std::filesystem::path(__FILE__).parent_path();
-void updateSpectrumPipeline(float time);
 void createPostProcessResources();
 void createPostProcessQuad();
 
@@ -190,42 +186,8 @@ unsigned int createEnvironmentCubemap(const std::string& hdrPath, int size) {
 	return cubemap;
 }
 void createSpectrumTextures() {
-	if (spectrumTexture != 0) {
-		glDeleteTextures(1, &spectrumTexture);
-		spectrumTexture = 0;
-	}
-	spectrumTexture = createTexture2D(kSpectrumResolution, kSpectrumResolution, GL_RG32F, GL_RG, GL_FLOAT);
-	string path = (programDir / "gaussian_noise.png").string();
+	string path = (programDir / "textures/gaussian_noise.png").string();
 	gaussianNoiseTexture = importTexture2D(path.c_str(), kSpectrumResolution, kSpectrumResolution, 2);
-}
-void createPingPongTextures() {
-	for (int i = 0; i < 2; ++i) {
-		if (pingpongTexture[i] != 0) {
-			glDeleteTextures(1, &pingpongTexture[i]);
-			pingpongTexture[i] = 0;
-		}
-		if (pingpongdxTexture[i] != 0) {
-			glDeleteTextures(1, &pingpongdxTexture[i]);
-			pingpongdxTexture[i] = 0;
-		}
-		if (pingpongdyTexture[i] != 0) {
-			glDeleteTextures(1, &pingpongdyTexture[i]);
-			pingpongdyTexture[i] = 0;
-		}
-		if (pingpongdisplacementxTexture[i] != 0) {
-			glDeleteTextures(1, &pingpongdisplacementxTexture[i]);
-			pingpongdisplacementxTexture[i] = 0;
-		}
-		if (pingpongdisplacementyTexture[i] != 0) {
-			glDeleteTextures(1, &pingpongdisplacementyTexture[i]);
-			pingpongdisplacementyTexture[i] = 0;
-		}
-		pingpongTexture[i] = createTexture2D(kSpectrumResolution, kSpectrumResolution, GL_RG32F, GL_RG, GL_FLOAT);
-		pingpongdxTexture[i] = createTexture2D(kSpectrumResolution, kSpectrumResolution, GL_RG32F, GL_RG, GL_FLOAT);
-		pingpongdyTexture[i] = createTexture2D(kSpectrumResolution, kSpectrumResolution, GL_RG32F, GL_RG, GL_FLOAT);
-		pingpongdisplacementxTexture[i] = createTexture2D(kSpectrumResolution, kSpectrumResolution, GL_RG32F, GL_RG, GL_FLOAT);
-		pingpongdisplacementyTexture[i] = createTexture2D(kSpectrumResolution, kSpectrumResolution, GL_RG32F, GL_RG, GL_FLOAT);
-	}
 }
 void createTwiddleFactorsTexture(unsigned int twiddleGenerationProgram) {
 	if (twiddleFactorsTexture != 0) {
@@ -411,9 +373,8 @@ void createPostProcessResources() {
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
-
 void render() {
-	updateSpectrumPipeline((float)glfwGetTime());
+	spectrumManager.tickSpectrums(spectrumProgram, timeEvaluationProgram, fftProgram,assemblyProgram, (float)glfwGetTime());
 	glBindFramebuffer(GL_FRAMEBUFFER, postProcessFbo);
 	glViewport(0, 0, screenSize.x, screenSize.y);
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -425,7 +386,7 @@ void render() {
 	mat4 proj = camera->getProjectionMatrix(aspectRatio);
 	vec3 cameraPos = camera->position;
 	vec3 cameraDir = camera->front;
-	vec3 lightDir = normalize(vec3(1.0, 1.0, 0.0));
+	vec3 lightDir = normalize(vec3(0.5, 1.0, 0.0));
 	glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "matProj"), 1, GL_FALSE, value_ptr(proj));
 	glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "matView"), 1, GL_FALSE, value_ptr(view));
 	glUniform3fv(glGetUniformLocation(shaderProgram, "cameraPos"), 1, value_ptr(cameraPos));
@@ -434,20 +395,19 @@ void render() {
 	glUniform1f(glGetUniformLocation(shaderProgram, "time"), (float)glfwGetTime());
 	glUniform2fv(glGetUniformLocation(shaderProgram, "oceanMeshSize"), 1, value_ptr(kOceanMeshSize));
 	glUniform1f(glGetUniformLocation(shaderProgram, "meshResolution"), 15.0);
-	glUniform1f(glGetUniformLocation(shaderProgram, "displacementScale"), 1.0);
-	glUniform1f(glGetUniformLocation(shaderProgram, "frequency"), kOceanMeshSize.x/10.0);
-	glUniform1f(glGetUniformLocation(shaderProgram, "choppiness"), 1.5f);
-	bindTexture(pingpongTexture[fftOutputIndex], "heightmap", 3);
-	bindTexture(pingpongdxTexture[fftOutputIndex], "dxTexture", 4);
-	bindTexture(pingpongdyTexture[fftOutputIndex], "dyTexture", 5);
-	bindTexture(pingpongdisplacementxTexture[fftOutputIndex], "displacementxTexture", 6);
-	bindTexture(pingpongdisplacementyTexture[fftOutputIndex], "displacementyTexture", 7);
-	bindTexture(environmentCubemap, "environmentMap", 8, GL_TEXTURE_CUBE_MAP);
+	std::pair<std::vector<float>, std::vector<float>> freqAmp = spectrumManager.getFrequencyAmplitudes();
+	glUniform1fv(glGetUniformLocation(shaderProgram, "frequencies"), static_cast<GLsizei>(freqAmp.first.size()), freqAmp.first.data());
+	glUniform1fv(glGetUniformLocation(shaderProgram, "amplitudes"), static_cast<GLsizei>(freqAmp.second.size()), freqAmp.second.data());
+	glUniform1i(glGetUniformLocation(shaderProgram, "numSpectrums"), spectrumManager.getNumSpectrums());
+	bindTextureArray(spectrumManager.getDisplacementMap(), "displacementMap", 3);
+	bindTextureArray(spectrumManager.getNormalMap(), "normalMap", 4);
+	bindTextureArray(spectrumManager.getFoamTexture(), "foamTexture", 5);
+	bindTexture(environmentCubemap, "environmentMap", 6, GL_TEXTURE_CUBE_MAP);
+
 	glBindSampler(3, fftLinearSampler);
 	glBindSampler(4, fftLinearSampler);
 	glBindSampler(5, fftLinearSampler);
 	glBindSampler(6, fftLinearSampler);
-	glBindSampler(7, fftLinearSampler);
 	glBindVertexArray(oceanVAO);
 	glPatchParameteri(GL_PATCH_VERTICES, 4);
 	glDrawElements(GL_PATCHES, static_cast<GLsizei>(oceanIndices.size()), GL_UNSIGNED_INT, 0);
@@ -455,6 +415,7 @@ void render() {
 	glBindSampler(3, 0);
 	glBindSampler(4, 0);
 	glBindSampler(5, 0);
+	glBindSampler(6, 0);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glViewport(0, 0, screenSize.x, screenSize.y);
 	glDisable(GL_DEPTH_TEST);
@@ -473,76 +434,8 @@ void render() {
 	glEnable(GL_DEPTH_TEST);
 }
 
-void generateSpectrum() {
-	glUseProgram(spectrumProgram);
-	glUniform1i(glGetUniformLocation(spectrumProgram, "resolution"), kSpectrumResolution);
-	glUniform1f(glGetUniformLocation(spectrumProgram, "oceanSize"), kOceanSize);
-	glUniform1f(glGetUniformLocation(spectrumProgram, "windSpeed"), kWindSpeed);
-	glUniform1f(glGetUniformLocation(spectrumProgram, "fetch"), kFetch);
-	glUniform2fv(glGetUniformLocation(spectrumProgram, "windDir"), 1, value_ptr(normalize(vec2(1.0f, 1.0f))));
-	glBindImageTexture(0, spectrumTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, gaussianNoiseTexture);
-	glUniform1i(glGetUniformLocation(spectrumProgram, "gaussianNoise"), 0);
-	const int groups = (kSpectrumResolution + 15) / 16;
-	glDispatchCompute(groups, groups, 1);
-	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-	glUseProgram(0);
-}
-void evaluateSpectrumAtTime(float time) {
-	glUseProgram(timeEvaluationProgram);
-	glUniform1f(glGetUniformLocation(timeEvaluationProgram, "time"), time);
-	glUniform1i(glGetUniformLocation(timeEvaluationProgram, "resolution"), kSpectrumResolution);
-	glUniform1i(glGetUniformLocation(timeEvaluationProgram, "oceanSize"), static_cast<int>(kOceanSize));
-	glUniform1f(glGetUniformLocation(timeEvaluationProgram, "speed"), 4.0);
-	glBindImageTexture(0, spectrumTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
-	glBindImageTexture(1, pingpongTexture[0], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
-	glBindImageTexture(2, pingpongdxTexture[0], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
-	glBindImageTexture(3, pingpongdyTexture[0], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
-	glBindImageTexture(4, pingpongdisplacementxTexture[0], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
-	glBindImageTexture(5, pingpongdisplacementyTexture[0], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
-	const int groups = (kSpectrumResolution + 15) / 16;
-	glDispatchCompute(groups, groups, 1);
-	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-	glUseProgram(0);
-}
-void runFFTPasses(bool horizontal, bool& pingPong, unsigned int inputPingPongTextures[2]) {
-	glUseProgram(fftProgram);
-	for (int i = 0;i < kSpectrumLog2Resolution;i++) {
 
-		glUniform1i(glGetUniformLocation(fftProgram, "resolution"), kSpectrumResolution);
-		glUniform1ui(glGetUniformLocation(fftProgram, "stage"), i);
-		glUniform1i(glGetUniformLocation(fftProgram, "horizontal"), horizontal ? 1 : 0);
-		bool isLastPass = (i == kSpectrumLog2Resolution - 1) && !horizontal;
-		glUniform1i(glGetUniformLocation(fftProgram, "normalization"), isLastPass);
-		glUniform1i(glGetUniformLocation(fftProgram, "applyShift"), isLastPass);
-		glBindImageTexture(0, inputPingPongTextures[pingPong ? 1 : 0], 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
-		glBindImageTexture(1, inputPingPongTextures[pingPong ? 0 : 1], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
-		glBindImageTexture(2, twiddleFactorsTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
-		const int groups = (kSpectrumResolution + 15) / 16;
-		glDispatchCompute(groups, groups, 1);
-		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-		pingPong = !pingPong;
 
-	}
-	glUseProgram(0);
-}
-void updateSpectrumPipeline(float time) {
-	evaluateSpectrumAtTime(time);
-	bool pingPong = false;
-	runFFTPasses(true, pingPong, pingpongTexture);
-	runFFTPasses(false, pingPong, pingpongTexture);
-	runFFTPasses(true, pingPong, pingpongdxTexture);
-	runFFTPasses(false, pingPong, pingpongdxTexture);
-	runFFTPasses(true, pingPong, pingpongdyTexture);
-	runFFTPasses(false, pingPong, pingpongdyTexture);
-	runFFTPasses(true, pingPong, pingpongdisplacementxTexture);
-	runFFTPasses(false, pingPong, pingpongdisplacementxTexture);
-	runFFTPasses(true, pingPong, pingpongdisplacementyTexture);
-	runFFTPasses(false, pingPong, pingpongdisplacementyTexture);
-
-	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-}
 void processInput(GLFWwindow* window, Camera* camera)
 {
 	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
@@ -569,36 +462,77 @@ int main(void)
 		return -1;
 	}
 	camera = new Camera(window);
-
+	string shaderDir = (programDir / "shaders").string();
 	shaderProgram = createShaderProgram(
-		(programDir / "ocean.vert").string(),
-		(programDir / "ocean.frag").string(),
-		(programDir / "ocean.tesc").string(),
-		(programDir / "ocean.tese").string()
+		(shaderDir + "/ocean.vert"),
+		(shaderDir + "/ocean.frag"),
+		(shaderDir + "/ocean.tesc"),
+		(shaderDir + "/ocean.tese")
 	);
 	equirectangularProgram = createShaderProgram(
-		(programDir / "equirectangular_to_cubemap.vert").string(),
-		(programDir / "equirectangular_to_cubemap.frag").string()
+		(shaderDir + "/equirectangular_to_cubemap.vert"),
+		(shaderDir + "/equirectangular_to_cubemap.frag")
 	);
 	postProcessProgram = createShaderProgram(
-		(programDir / "postprocess.vert").string(),
-		(programDir / "postprocess.frag").string()
+		(shaderDir + "/postprocess.vert"),
+		(shaderDir + "/postprocess.frag")
 	);
-	spectrumProgram = createComputeShaderProgram((programDir / "spectrum.comp").string());
-	fftProgram = createComputeShaderProgram((programDir / "fft.comp").string());
-	twiddleFactorGenerationProgram = createComputeShaderProgram((programDir / "precomputeTwiddleFactor.comp").string());
-	timeEvaluationProgram = createComputeShaderProgram((programDir / "timeEvaluation.comp").string());
-	glEnable(GL_DEPTH_TEST);
+	spectrumProgram = createComputeShaderProgram((shaderDir + "/spectrum.comp"));
+	fftProgram = createComputeShaderProgram((shaderDir + "/fft.comp"));
+	twiddleFactorGenerationProgram = createComputeShaderProgram((shaderDir + "/precomputeTwiddleFactor.comp"));
+	timeEvaluationProgram = createComputeShaderProgram((shaderDir + "/timeEvaluation.comp"));
+	assemblyProgram = createComputeShaderProgram((shaderDir + "/assembleFinalMaps.comp"));
+
 	createSpectrumTextures();
 	createTwiddleFactorsTexture(twiddleFactorGenerationProgram);
-	createPingPongTextures();
+	spectrumManager.initializeTextures(spectrumProgram,gaussianNoiseTexture,twiddleFactorsTexture);
+	float baseFrequency = kOceanMeshSize.x/10.0f;
+	spectrumManager.addSpectrum({ SpectrumSettings{
+		1024.0f,
+		0.5f,
+		80000.0f,
+		-2.0,
+		0.02f*baseFrequency,
+		2.0f,
+		},
+		SpectrumSettings{
+		128.0f,
+		0.5f,
+		30000.0f,
+		0.0,
+		0.5f*baseFrequency,
+		1.0f,
+		},
+		SpectrumSettings{
+		64.0f,
+		1.5f,
+		20000.0f,
+		0.0,
+		1.0f*baseFrequency,
+		0.75f},
+		SpectrumSettings{
+		32.0f,
+		1.4f,
+		5000.0f,
+		0.1,
+		1.0f*baseFrequency,
+		0.5f,
+		},
+		//SpectrumSettings{
+		//4.0f,
+		//1.0f,
+		//1000.0f,
+		//1.0f,
+		//0.03f,
+		//},
+	});
+	glEnable(GL_DEPTH_TEST);
 	createOceanMesh(ivec2(static_cast<int>(kOceanMeshSize.x), static_cast<int>(kOceanMeshSize.y)),10.0);
 	createCubeMesh();
 	createFftSampler();
 	createPostProcessQuad();
 	createPostProcessResources();
-	generateSpectrum();
-	environmentCubemap = createEnvironmentCubemap((programDir / "skyboxes/CasualDay4K.hdr").string(), 512);
+	environmentCubemap = createEnvironmentCubemap((programDir / "textures/CasualDay4K.hdr").string(), 512);
 
 	while (!glfwWindowShouldClose(window))
 	{

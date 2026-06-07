@@ -1,19 +1,23 @@
 #version 460 core
 layout (local_size_x = 16, local_size_y = 16) in;
-layout (binding = 0, rg32f) uniform image2D heightmapOutput;
+layout (rgba32f,binding = 0) uniform image2DArray heightmapOutput;
+const int MAX_SPECTURM_COUNT = 8;
 uniform sampler2D gaussianNoise;
-uniform int resolution;              // resolution (e.g., 256)
-uniform float oceanSize;            // Physical domain size (e.g., 1000.0 meters)   
+uniform int resolution;
+uniform float oceanSizes[MAX_SPECTURM_COUNT];            // Physical domain size (e.g., 1000.0 meters)   
 uniform float windSpeed;    // Wind speed at 10m (m/s)
-uniform float fetch;        // Fetch distance (meters)
+uniform float fetches[MAX_SPECTURM_COUNT];        // Fetch distance (meters)
 uniform vec2 windDir;       // Normalized wind direction vector
-
+uniform int numSpectrums;
 const float PI = 3.14159265359;
 const float G = 9.81;
 
-void main() {
+void computeSpectrum(int index) {
 	int x = int(gl_GlobalInvocationID.x);
 	int y = int(gl_GlobalInvocationID.y);
+	int oceanSize = int(oceanSizes[index]);
+	float fetch = float(fetches[index]);
+
 	if(x>= resolution || y >= resolution)
 		return;
 	float alpha = 0.076*pow(windSpeed/(fetch*G), 0.22);
@@ -22,8 +26,8 @@ void main() {
 	float ky = 2*PI*(y-resolution/2.0)/oceanSize;
 	float kLength = length(vec2(kx, ky));
 	if(kLength < 1e-6)
-	{
-		imageStore(heightmapOutput, ivec2(x, y), vec4(0.0));
+	{	
+		imageStore(heightmapOutput, ivec3(x, y,index), vec4(0.0));
 		return;
 	}
 float frequency = sqrt(G * kLength);
@@ -57,5 +61,10 @@ float amplitude =
     );
 
 	vec2 complexAmplitude =amplitude * vec2(realRandomVal, imagRandomVal);
-	imageStore(heightmapOutput, ivec2(x, y), vec4(complexAmplitude, 0.0, 1.0));
+	imageStore(heightmapOutput, ivec3(x, y,index), vec4(complexAmplitude, 0.0, 0.0));
+}
+void main(){
+	for(int i=0;i<numSpectrums;i++){
+		computeSpectrum(i);
+	}
 }

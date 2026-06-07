@@ -1,17 +1,14 @@
 #version 460 core
 layout(quads, fractional_even_spacing, ccw) in;
+const int MAX_SPECTRUM_COUNT = 8;
 uniform mat4 matView;
 uniform mat4 matProj;
 uniform float time;
-uniform sampler2D heightmap;
-uniform sampler2D dxTexture;
-uniform sampler2D dyTexture;
-uniform sampler2D displacementxTexture;
-uniform sampler2D displacementyTexture;
+uniform sampler2DArray displacementMap;
 uniform vec2 oceanMeshSize;
-uniform float displacementScale;
-uniform float frequency;
-uniform float choppiness;
+uniform int numSpectrums;
+uniform float frequencies[MAX_SPECTRUM_COUNT];
+uniform float amplitudes[MAX_SPECTRUM_COUNT];
 out vec3 worldPos;
 out vec2 fragUV;
 
@@ -22,10 +19,15 @@ in gl_PerVertex
 
 vec2 getUV(vec3 pos){
 	vec2 uv = (pos.xz / oceanMeshSize) + 0.5;
-	uv *= frequency;
 	return uv;
 }
-
+vec3 getDisplacement(vec2 uv){
+    vec3 displacement = vec3(0.0);
+    for(int i = 0; i < numSpectrums; i++){
+        displacement += texture(displacementMap, vec3(uv*frequencies[i], i)).rgb*amplitudes[i];
+    }
+    return displacement;
+} 
 void main(){
     float u = gl_TessCoord.x;
     float v = gl_TessCoord.y;
@@ -43,11 +45,8 @@ void main(){
 	vec2 uv = getUV(pos);
 	fragUV = uv;
 
-	float height = texture(heightmap, uv).r * displacementScale;
-	pos.y += height;
-
-	vec2 displacement = vec2(texture(displacementxTexture, uv).r, texture(displacementyTexture, uv).r) * choppiness * displacementScale;
-	pos.xz += displacement;
+    vec3 displacement = getDisplacement(uv);
+    pos += displacement;
 
 	worldPos = pos;
 	gl_Position = matProj * matView * vec4(pos, 1.0);

@@ -1,0 +1,81 @@
+#version 460 core
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(rgba32f, binding = 0) uniform readonly image2DArray heightmapInput;
+layout(rgba32f, binding = 1) uniform writeonly image2DArray heightDxzOutput;
+layout(rgba32f, binding = 2) uniform writeonly image2DArray dxDyOutput;
+layout(rgba32f, binding = 3) uniform writeonly image2DArray derivXXZZOutput;
+layout(rgba32f, binding = 4) uniform writeonly image2DArray dispXYOutput;
+const int MAX_SPECTURM_COUNT = 8;
+uniform float time;
+uniform float speed;
+uniform int resolution;
+uniform int numSpectrums;
+uniform float[MAX_SPECTURM_COUNT] oceanSizes;
+
+const float PI = 3.14159265359;
+const float g = 9.81;
+
+vec2 complexMultiply(vec2 a, vec2 b) {
+    return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+vec2 ComplexAdd(vec2 c1, vec2 c2) {
+    return c1 + c2;
+}
+vec2 ComplexConj(vec2 c) {
+    return vec2(c.x, -c.y);
+}
+vec2 multiplyByI(vec2 inputNum){
+	return vec2(-inputNum.g, inputNum.r);
+}
+void timeEvaluateSpectrum(int index) {
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+    if (id.x >= resolution || id.y >= resolution) return;
+    float oceanSize = oceanSizes[index];
+    float kx = (float(id.x) - float(resolution) / 2.0) * (2.0 * PI / oceanSize);
+    float ky = (float(id.y) - float(resolution) / 2.0) * (2.0 * PI / oceanSize);
+    float k_len = sqrt(kx * kx + ky * ky);
+    ivec3 outputId = ivec3(id,index);
+    if (k_len < 0.0001) {
+        imageStore(heightDxzOutput, outputId, vec4(0.0));
+        imageStore(dxDyOutput, outputId, vec4(0.0));
+        imageStore(derivXXZZOutput, outputId, vec4(0.0));
+        imageStore(dispXYOutput, outputId, vec4(0.0));
+        return;
+    }
+
+    float dispersion = sqrt(g * k_len);
+    vec2 phaseShift = vec2(cos(dispersion * time*speed), sin(dispersion * time*speed));
+    vec2 conjPhaseShift = vec2(cos(-dispersion * time*speed), sin(-dispersion * time*speed));
+
+    vec2 H0 = imageLoad(heightmapInput, outputId).rg;
+
+    ivec2 mirroredCoords = ivec2((resolution - id.x) % resolution, (resolution - id.y) % resolution);
+    vec2 H0_mk = imageLoad(heightmapInput, ivec3(mirroredCoords,index)).rg;
+    vec2 H0_conj = ComplexConj(H0_mk);
+
+    vec2 Ht = ComplexAdd(complexMultiply(H0, phaseShift), complexMultiply(H0_conj, conjPhaseShift));
+    vec2 dx = multiplyByI(Ht) * kx;
+    vec2 dy = multiplyByI(Ht) * ky;
+
+    float kx_norm = kx / k_len;
+    float ky_norm = ky / k_len;
+    
+    vec2 dispX = multiplyByI(Ht) * kx_norm;
+    vec2 dispY = multiplyByI(Ht) * ky_norm;
+    float term_dx_dx = -(kx * kx) / k_len;
+    float term_dz_dz = -(ky * ky) / k_len;
+    float term_cross  = -(kx * ky) / k_len;
+    vec2 dispXdx = term_dx_dx * Ht;
+    vec2 dispZdz = term_dz_dz * Ht;
+    vec2 dispXdz = term_cross * Ht;
+    imageStore(heightDxzOutput, outputId, vec4(Ht, dispXdz));
+    imageStore(dxDyOutput, outputId, vec4(dx, dy));
+    imageStore(derivXXZZOutput, outputId, vec4(dispXdx, dispZdz));
+    imageStore(dispXYOutput, outputId, vec4(dispX, dispY));
+}
+void main(){
+    for(int i = 0; i < numSpectrums; i++) {
+        timeEvaluateSpectrum(i);
+    }
+}
