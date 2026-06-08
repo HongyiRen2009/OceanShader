@@ -492,8 +492,8 @@ int main(void)
 		0.5f,
 		80000.0f,
 		-2.0,
-		0.02f*baseFrequency,
-		2.0f,
+		0.01f*baseFrequency,
+		1.0f,
 		},
 		SpectrumSettings{
 		128.0f,
@@ -501,7 +501,7 @@ int main(void)
 		30000.0f,
 		0.0,
 		0.5f*baseFrequency,
-		1.0f,
+		0.75f,
 		},
 		SpectrumSettings{
 		64.0f,
@@ -509,14 +509,14 @@ int main(void)
 		20000.0f,
 		0.0,
 		1.0f*baseFrequency,
-		0.75f},
+		0.5},
 		SpectrumSettings{
 		32.0f,
 		1.4f,
 		5000.0f,
-		0.1,
-		1.0f*baseFrequency,
-		0.5f,
+		0.0,
+		1.25f*baseFrequency,
+		0.25f,
 		},
 		//SpectrumSettings{
 		//4.0f,

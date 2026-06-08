@@ -17,8 +17,6 @@ uniform int resolution;
 void main(){
 	ivec2 id = ivec2(gl_GlobalInvocationID.xy);
 	if (id.x >= resolution || id.y >= resolution) return;
-	float firstJacobian = 1.0;
-
 	for(int i=0;i<numSpectrums;i++){
 		ivec3 inputId = ivec3(id,i);
 		vec4 heightDxz = imageLoad(heightDxzInput, inputId);
@@ -31,7 +29,8 @@ void main(){
 		float dDz_dx = dDx_dz;
 		float J = (1.0 + dDx_dx) * (1.0 + dDz_dz) - (dDx_dz * dDz_dx);
 		J-=0.55+foamBiases[i];
-		float foamGeneration = smoothstep(0.4, 0.0, J); 
+
+		float foamGeneration = smoothstep(0.4, 0.0, J);
 		float oldFoam = imageLoad(foamInput, inputId).r;
 		float newFoam = oldFoam+foamGeneration;
 		newFoam *= exp(-foamDecayFactor);

@@ -163,12 +163,12 @@ void SpectrumManager::assembleFinalMaps(unsigned int assemblyProgram) {
 	glUniform1fv(glGetUniformLocation(assemblyProgram, "foamBiases"), numSpectrums, foamBiases.data());
 	glUniform1i(glGetUniformLocation(assemblyProgram, "resolution"), resolution);
 	glUniform1f(glGetUniformLocation(assemblyProgram, "choppiness"), 1.5);
-	glUniform1f(glGetUniformLocation(assemblyProgram, "foamDecayFactor"), 0.0175);
+	glUniform1f(glGetUniformLocation(assemblyProgram, "foamDecayFactor"), 0.1);
 
-	glBindImageTexture(0, pingpongHeightDxzTextureArray[foamIndex], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
-	glBindImageTexture(1, pingpongDerivXXZZTextureArray[foamIndex], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
-	glBindImageTexture(2, pingpongDxDyTextureArray[foamIndex], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
-	glBindImageTexture(3, pingpongDispXYTextureArray[foamIndex], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
+	glBindImageTexture(0, pingpongHeightDxzTextureArray[0], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
+	glBindImageTexture(1, pingpongDerivXXZZTextureArray[0], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
+	glBindImageTexture(2, pingpongDxDyTextureArray[0], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
+	glBindImageTexture(3, pingpongDispXYTextureArray[0], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
 	glBindImageTexture(4, foamPingPongTexture[1-foamIndex], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
 	glBindImageTexture(5, normalMap, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 	glBindImageTexture(6, displacementMap, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
@@ -176,6 +176,7 @@ void SpectrumManager::assembleFinalMaps(unsigned int assemblyProgram) {
 	const int groups = (resolution + 15) / 16;
 	glDispatchCompute(groups, groups, 1);
 	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	foamIndex = 1 - foamIndex;
 }
 void SpectrumManager::tickSpectrums(unsigned int spectrumProgram, unsigned int timeEvaluationProgram, unsigned int fftProgram, unsigned int assemblyProgram, float time) {
 	generateSpectrums(spectrumProgram);
