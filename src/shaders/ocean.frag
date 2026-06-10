@@ -17,7 +17,7 @@ out vec4 FRAG_COLOR;
 const vec3 OCEAN_ALBEDO = vec3(0.0, 0.48, 0.90);
 const vec3 SUN_COLOR = vec3(1.0);
 const vec3 SKY_COLOR = vec3(0.529, 0.808, 0.922);
-const vec3 FOAM_COLOR = vec3(1.0);
+const vec3 FOAM_COLOR = vec3(0.66,0.5568,0.492);
 const float PI = 3.14159265359;
 const float k1 = 10.0;
 const float k2 = 0.1;
