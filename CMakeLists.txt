@@ -2,6 +2,8 @@
 
 project(OceanShader)
 
+set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT OceanShader)
+
 set(CMAKE_CXX_STANDARD 17)
 find_package(glfw3 CONFIG REQUIRED)
 find_package(glad CONFIG REQUIRED)

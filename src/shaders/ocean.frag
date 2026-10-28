@@ -17,7 +17,7 @@ out vec4 FRAG_COLOR;
 const vec3 OCEAN_ALBEDO = vec3(0.0, 0.48, 0.90);
 const vec3 SUN_COLOR = vec3(1.0);
 const vec3 SKY_COLOR = vec3(0.529, 0.808, 0.922);
-const vec3 FOAM_COLOR = vec3(0.66,0.5568,0.492);
+const vec3 FOAM_COLOR = vec3(0.6,0.5568,0.492);
 const float PI = 3.14159265359;
 const float k1 = 10.0;
 const float k2 = 0.1;
@@ -89,10 +89,15 @@ vec3 getNormal(vec2 uv){
 float getFoamMask(vec2 uv){
 	float mask = 0.0;
 	for(int i=0; i<numSpectrums; i++){
-		mask += texture(foamTexture, vec3(uv*frequencies[i], i)).r*amplitudes[i];
+		mask += texture(foamTexture, vec3(uv*frequencies[i], i)).r;
 	}
-	return clamp(mask,0.0,1.0);
+	// Sum of Water-main's saved foamSubtract settings: 0.04 - 0.04 - 0.46 - 0.38.
+	return clamp(mask - 0.84, 0.0, 1.0);
 	}
+vec3 toneMapHdr(vec3 hdr) {
+	vec3 mapped = hdr / (hdr + vec3(1.0));
+	return pow(mapped, vec3(1.0 / 2.2));
+}
 void main(){
 	vec3 n = getNormal(fragUV);
 	vec3 l = normalize(lightDir);
@@ -100,7 +105,7 @@ void main(){
 	float foamMask = getFoamMask(fragUV);
 	vec3 scatterColor = scatter(n, v, worldPos.y, foamMask);
 	vec3 spec = specular(n, l, v, foamMask+0.4);
-	vec3 reflection = texture(environmentMap, reflect(-v, n)).rgb;
+	vec3 reflection = toneMapHdr(texture(environmentMap, reflect(-v, n)).rgb);
 	float fresnel = pow(1.0 - max(dot(n, v), 0.0), 3.0) * 0.65 + 0.35;
 	vec3 oceanColor = mix(scatterColor, reflection, fresnel) + spec;
 	float fogFactor = exp(-distance(cameraPos, worldPos) / 50.0);

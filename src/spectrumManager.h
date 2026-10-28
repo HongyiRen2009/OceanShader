@@ -23,7 +23,7 @@ class SpectrumManager {
 		void tickSpectrums(unsigned int spectrumProgram, unsigned int timeEvaluationProgram, unsigned int fftProgram, unsigned int assemblyProgram, float time);
 		unsigned int getDisplacementMap() const { return displacementMap; }
 		unsigned int getNormalMap() const { return normalMap; }
-		unsigned int getFoamTexture() const { return foamPingPongTexture[foamIndex]; }
+		unsigned int getFoamTexture() const { return foamPingPongTexture[1 - foamIndex]; }
 		int getNumSpectrums() const { return numSpectrums; }
 		std::pair<std::vector<float>, std::vector<float>> getFrequencyAmplitudes() const {
 			std::vector<float> frequencies;

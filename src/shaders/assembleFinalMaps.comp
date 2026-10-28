@@ -28,13 +28,11 @@ void main(){
 		float dDx_dz = heightDxz.b * choppiness;
 		float dDz_dx = dDx_dz;
 		float J = (1.0 + dDx_dx) * (1.0 + dDz_dz) - (dDx_dz * dDz_dx);
-		J-=0.55+foamBiases[i];
-
-		float foamGeneration = smoothstep(0.4, 0.0, J);
+		// Water-main: foamBias = 0.85, foamThreshold = 0, foamAdd = 0.1.
+		float foamGeneration = max(0.0, foamBiases[i] - J);
 		float oldFoam = imageLoad(foamInput, inputId).r;
-		float newFoam = oldFoam+foamGeneration;
-		newFoam *= exp(-foamDecayFactor);
-		newFoam = clamp(newFoam, 0.0, 1.0);
+		oldFoam = clamp(oldFoam * exp(-foamDecayFactor), 0.0, 1.0);
+		float newFoam = oldFoam + 0.1 * foamGeneration;
 		imageStore(foamOutput, inputId, vec4(newFoam, 0.0, 0.0, 0.0));
 		vec3 normal = normalize(vec3(-dxdy.r, 1.0, -dxdy.b));
 		imageStore(normalOutput, inputId, vec4(normal, 1.0));

@@ -49,7 +49,10 @@ void SpectrumManager::createAssembledTextures() {
 			foamPingPongTexture[i] = 0;
 		}
 		foamPingPongTexture[i] = createTextureArray2D(resolution, resolution, numSpectrums, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+		const float zero[4] = {};
+		glClearTexImage(foamPingPongTexture[i], 0, GL_RGBA, GL_FLOAT, zero);
 	}
+	foamIndex = 0;
 }
 void SpectrumManager::updateTextureArrays() {
 	
@@ -113,7 +116,7 @@ void SpectrumManager::evaluateSpectrumsAtTime(unsigned int timeEvaluationProgram
 	
 	glUniform1f(glGetUniformLocation(timeEvaluationProgram, "time"), time);
 	glUniform1i(glGetUniformLocation(timeEvaluationProgram, "resolution"), resolution);
-	glUniform1f(glGetUniformLocation(timeEvaluationProgram, "speed"), 4.0);
+	glUniform1f(glGetUniformLocation(timeEvaluationProgram, "speed"), 1.0);
 	glUniform1i(glGetUniformLocation(timeEvaluationProgram, "numSpectrums"), numSpectrums);
 
 	std::vector<float> oceanSizes = std::vector<float>(numSpectrums);
@@ -139,7 +142,8 @@ void SpectrumManager::runFFTPasses(unsigned int fftProgram, bool horizontal, boo
 		glUniform1ui(glGetUniformLocation(fftProgram, "stage"), i);
 		glUniform1i(glGetUniformLocation(fftProgram, "horizontal"), horizontal ? 1 : 0);
 		bool isLastPass = (i == log2Resolution - 1) && !horizontal;
-		glUniform1i(glGetUniformLocation(fftProgram, "normalization"), isLastPass);
+		// Water-main sums its Fourier-series coefficients without stage attenuation.
+		glUniform1i(glGetUniformLocation(fftProgram, "normalization"), GL_FALSE);
 		glUniform1i(glGetUniformLocation(fftProgram, "applyShift"), isLastPass);
 		glUniform1i(glGetUniformLocation(fftProgram, "numSpectrums"), numSpectrums);
 		glBindImageTexture(0, pingpongTextureArrays[pingPong ? 1 : 0], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
@@ -162,8 +166,8 @@ void SpectrumManager::assembleFinalMaps(unsigned int assemblyProgram) {
 	glUniform1i(glGetUniformLocation(assemblyProgram, "numSpectrums"), numSpectrums);
 	glUniform1fv(glGetUniformLocation(assemblyProgram, "foamBiases"), numSpectrums, foamBiases.data());
 	glUniform1i(glGetUniformLocation(assemblyProgram, "resolution"), resolution);
-	glUniform1f(glGetUniformLocation(assemblyProgram, "choppiness"), 1.5);
-	glUniform1f(glGetUniformLocation(assemblyProgram, "foamDecayFactor"), 0.1);
+	glUniform1f(glGetUniformLocation(assemblyProgram, "choppiness"), 1.0);
+	glUniform1f(glGetUniformLocation(assemblyProgram, "foamDecayFactor"), 0.0175);
 
 	glBindImageTexture(0, pingpongHeightDxzTextureArray[0], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
 	glBindImageTexture(1, pingpongDerivXXZZTextureArray[0], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
@@ -175,7 +179,7 @@ void SpectrumManager::assembleFinalMaps(unsigned int assemblyProgram) {
 	glBindImageTexture(7, foamPingPongTexture[foamIndex], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 	const int groups = (resolution + 15) / 16;
 	glDispatchCompute(groups, groups, 1);
-	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 	foamIndex = 1 - foamIndex;
 }
 void SpectrumManager::tickSpectrums(unsigned int spectrumProgram, unsigned int timeEvaluationProgram, unsigned int fftProgram, unsigned int assemblyProgram, float time) {

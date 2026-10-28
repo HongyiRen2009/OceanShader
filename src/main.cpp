@@ -14,10 +14,10 @@
 #include "spectrumManager.h"
 using namespace std;
 using namespace glm;
-constexpr int kSpectrumResolution = 256;
-constexpr int kSpectrumLog2Resolution = 8;
+constexpr int kSpectrumResolution = 512;
+constexpr int kSpectrumLog2Resolution = 9;
 constexpr float kOceanSize = 128.0f;
-constexpr float kWindSpeed = 30.0f;
+constexpr float kWindSpeed = 2.0f;
 constexpr float kFetch = 20000.0f;
 const vec2 kOceanMeshSize = vec2(1000.0f, 1000.0f);
 vec2 screenSize(800.0f, 600.0f);
@@ -46,7 +46,7 @@ unsigned int postProcessColorTexture = 0;
 unsigned int postProcessDepthTexture = 0;
 unsigned int postProcessVAO = 0;
 unsigned int postProcessVBO = 0;
-SpectrumManager spectrumManager(kSpectrumResolution, kWindSpeed, normalize(vec2(1.0f, 1.0f)));
+SpectrumManager spectrumManager(kSpectrumResolution, kWindSpeed, vec2(cos(radians(22.0f)), sin(radians(22.0f))));
 const double PI = 3.14159265358979323846;
 
 const std::filesystem::path programDir = std::filesystem::path(__FILE__).parent_path();
@@ -486,45 +486,30 @@ int main(void)
 	createSpectrumTextures();
 	createTwiddleFactorsTexture(twiddleFactorGenerationProgram);
 	spectrumManager.initializeTextures(spectrumProgram,gaussianNoiseTexture,twiddleFactorsTexture);
-	float baseFrequency = kOceanMeshSize.x/10.0f;
-	spectrumManager.addSpectrum({ SpectrumSettings{
-		1024.0f,
-		0.5f,
-		80000.0f,
-		-2.0,
+	float baseFrequency = kOceanMeshSize.x;
+	spectrumManager.addSpectrum({  SpectrumSettings{
+		94.0f,
+		1.0f,
+		100000.0f,
+		0.85f,
 		0.01f*baseFrequency,
 		1.0f,
 		},
 		SpectrumSettings{
-		128.0f,
-		0.5f,
-		30000.0f,
-		0.0,
-		0.5f*baseFrequency,
-		0.75f,
-		},
-		SpectrumSettings{
 		64.0f,
-		1.5f,
-		20000.0f,
-		0.0,
-		1.0f*baseFrequency,
-		0.5},
-		SpectrumSettings{
+		1.0f,
+		150000.0f,
+		0.85f,
+		0.12f*baseFrequency,
+		0.25f,
+		},SpectrumSettings{
 		32.0f,
-		1.4f,
-		5000.0f,
-		0.0,
-		1.25f*baseFrequency,
+		1.0f,
+		200000.0f,
+		0.85f,
+		0.13f*baseFrequency,
 		0.25f,
 		},
-		//SpectrumSettings{
-		//4.0f,
-		//1.0f,
-		//1000.0f,
-		//1.0f,
-		//0.03f,
-		//},
 	});
 	glEnable(GL_DEPTH_TEST);
 	createOceanMesh(ivec2(static_cast<int>(kOceanMeshSize.x), static_cast<int>(kOceanMeshSize.y)),10.0);
